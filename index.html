@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Simple Calculator</title>
-    <meta name="description" content="A simple, clean, and user-friendly web calculator for basic arithmetic operations.">
+    <meta name="description" content="A simple, clean, and user-friendly web calculator for basic arithmetic operations, including square root and percentage.">
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -88,7 +88,7 @@
         .btn.equals {
             background-color: #4CAF50;
             color: #fff;
-            grid-column: span 2; /* Make equals button span two columns */
+            /* Removed: grid-column: span 2; as equals button is now single column */
         }
 
         .btn.equals:hover {
@@ -123,26 +123,28 @@
         <input type="text" class="calculator-display" id="display" value="0" readonly>
         <div class="calculator-buttons">
             <button class="btn clear" id="btn-clear">AC</button>
+            <button class="btn operator" id="btn-sqrt">√</button>
+            <button class="btn operator" id="btn-percent">%</button>
             <button class="btn operator" id="btn-divide">/</button>
-            <button class="btn operator" id="btn-multiply">*</button>
 
             <button class="btn" id="btn-7">7</button>
             <button class="btn" id="btn-8">8</button>
             <button class="btn" id="btn-9">9</button>
-            <button class="btn operator" id="btn-subtract">-</button>
+            <button class="btn operator" id="btn-multiply">*</button>
 
             <button class="btn" id="btn-4">4</button>
             <button class="btn" id="btn-5">5</button>
             <button class="btn" id="btn-6">6</button>
-            <button class="btn operator" id="btn-add">+</button>
+            <button class="btn operator" id="btn-subtract">-</button>
 
             <button class="btn" id="btn-1">1</button>
             <button class="btn" id="btn-2">2</button>
             <button class="btn" id="btn-3">3</button>
-            <button class="btn equals" id="btn-equals">=</button>
+            <button class="btn operator" id="btn-add">+</button>
 
             <button class="btn zero" id="btn-0">0</button>
             <button class="btn" id="btn-decimal">.</button>
+            <button class="btn equals" id="btn-equals">=</button>
         </div>
     </div>
 
@@ -154,10 +156,21 @@
         let waitingForSecondOperand = false;
 
         function updateDisplay() {
-            display.value = currentInput;
+            // Prevent display from showing 'NaN' for invalid operations (e.g., sqrt of negative)
+            if (currentInput === 'NaN') {
+                display.value = 'Error';
+            } else {
+                display.value = currentInput;
+            }
         }
 
         function inputDigit(digit) {
+            if (currentInput === 'Error') { // Clear error state on new digit input
+                currentInput = '0';
+                firstOperand = null;
+                operator = null;
+                waitingForSecondOperand = false;
+            }
             if (waitingForSecondOperand === true) {
                 currentInput = digit;
                 waitingForSecondOperand = false;
@@ -168,6 +181,14 @@
         }
 
         function inputDecimal() {
+            if (currentInput === 'Error') { // Clear error state on new decimal input
+                currentInput = '0.';
+                firstOperand = null;
+                operator = null;
+                waitingForSecondOperand = false;
+                updateDisplay();
+                return;
+            }
             if (waitingForSecondOperand === true) {
                 currentInput = '0.';
                 waitingForSecondOperand = false;
@@ -191,6 +212,15 @@
         function handleOperator(nextOperator) {
             const inputValue = parseFloat(currentInput);
 
+            if (currentInput === 'Error') { // If in error state, allow changing operator for a fresh start
+                operator = nextOperator;
+                firstOperand = null; // Clear previous state
+                waitingForSecondOperand = true;
+                return;
+            }
+
+            // If an operator is already set and we're waiting for a second operand,
+            // it means the user is changing the operator (e.g., 5 + * -> 5 *).
             if (operator && waitingForSecondOperand) {
                 operator = nextOperator;
                 return;
@@ -225,7 +255,7 @@
                 if (second === 0) return 'Error';
                 return first / second;
             }
-            return second; // Should not happen with valid operator
+            return second; // Fallback, should not be reached with valid operators
         }
 
         document.querySelectorAll('.calculator-buttons button').forEach(button => {
@@ -242,8 +272,59 @@
                     return;
                 }
 
+                if (id === 'btn-sqrt') {
+                    if (currentInput === 'Error') return; // Do nothing if in error state
+                    const value = parseFloat(currentInput);
+                    if (isNaN(value) || value < 0) {
+                        currentInput = 'Error';
+                    } else {
+                        currentInput = String(Math.sqrt(value));
+                    }
+                    waitingForSecondOperand = false; // After sqrt, new digits should start a new number
+                    updateDisplay();
+                    return;
+                }
+
+                if (id === 'btn-percent') {
+                    if (currentInput === 'Error') return; // Do nothing if in error state
+                    let value = parseFloat(currentInput);
+                    if (isNaN(value)) {
+                        currentInput = 'Error';
+                    } else {
+                        // Case 1: X operator Y%, where X is firstOperand, Y is currentInput (not waiting for second operand)
+                        if (firstOperand !== null && operator !== null && !waitingForSecondOperand) {
+                            if (operator === '+' || operator === '-') {
+                                // e.g., 50 + 10% -> 50 + (50 * 0.10)
+                                value = firstOperand * (value / 100);
+                            } else if (operator === '*' || operator === '/') {
+                                // e.g., 50 * 10% -> 50 * 0.10
+                                value = value / 100;
+                            }
+                        }
+                        // Case 2: X operator %, where X is firstOperand, currentInput is X (due to waitingForSecondOperand)
+                        else if (firstOperand !== null && operator !== null && waitingForSecondOperand) {
+                            // Interpret as X operator X%
+                            value = firstOperand * (value / 100); // e.g., 50 + % -> 50 + (50 * 0.10)
+                        }
+                        // Case 3: X% (no operator pending)
+                        else {
+                            value = value / 100; // e.g., 50% -> 0.5
+                        }
+                        currentInput = String(value);
+                    }
+                    waitingForSecondOperand = false; // After percent, new digits should start a new number
+                    updateDisplay();
+                    return;
+                }
+
                 if (id === 'btn-equals') {
-                    if (firstOperand === null || operator === null) return; // No pending operation
+                    if (currentInput === 'Error') return; // Do nothing if in error state
+
+                    // If no pending operation, just return (e.g., just '5' then '=')
+                    if (firstOperand === null || operator === null) {
+                        return;
+                    }
+
                     const inputValue = parseFloat(currentInput);
                     const result = calculate(firstOperand, inputValue, operator);
                     if (result === 'Error') {
