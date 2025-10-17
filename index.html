@@ -105,9 +105,7 @@
             background-color: #208035;
         }
 
-        .btn.zero {
-            grid-column: span 4; /* Make zero button span the entire row */
-        }
+        /* The .btn.zero class is removed as the zero button now spans 2 columns with an inline style */
     </style>
 </head>
 <body>
@@ -115,26 +113,28 @@
         <div id="calculator-display">0</div>
         <div class="calculator-buttons">
             <button class="btn clear" data-action="clear">C</button>
+            <button class="btn operator" data-action="sqrt">√</button>
+            <button class="btn operator" data-action="percent">%</button>
             <button class="btn operator" data-action="divide">/</button>
-            <button class="btn operator" data-action="multiply">*</button>
-            <button class="btn operator" data-action="subtract">-</button>
 
             <button class="btn" data-action="digit">7</button>
             <button class="btn" data-action="digit">8</button>
             <button class="btn" data-action="digit">9</button>
-            <button class="btn operator" data-action="add">+</button>
+            <button class="btn operator" data-action="multiply">*</button>
 
             <button class="btn" data-action="digit">4</button>
             <button class="btn" data-action="digit">5</button>
             <button class="btn" data-action="digit">6</button>
-            <button class="btn" data-action="decimal">.</button>
+            <button class="btn operator" data-action="subtract">-</button>
 
             <button class="btn" data-action="digit">1</button>
             <button class="btn" data-action="digit">2</button>
             <button class="btn" data-action="digit">3</button>
-            <button class="btn equals" data-action="calculate">=</button>
+            <button class="btn operator" data-action="add">+</button>
 
-            <button class="btn zero" data-action="digit">0</button>
+            <button class="btn" data-action="digit" style="grid-column: span 2;">0</button>
+            <button class="btn" data-action="decimal">.</button>
+            <button class="btn equals" data-action="calculate">=</button>
         </div>
     </div>
 
@@ -178,6 +178,8 @@
             const inputValue = parseFloat(displayValue);
 
             if (operator && waitingForSecondOperand) {
+                // An operator was just pressed, and a new one is pressed.
+                // This means the user is changing the operator, or chaining without entering a second operand.
                 operator = nextOperator;
                 return;
             }
@@ -186,7 +188,7 @@
                 firstOperand = inputValue;
             } else if (operator) {
                 const result = calculate(firstOperand, operator, inputValue);
-                if (result === 'Error') {
+                if (String(result) === 'Error') {
                     displayValue = 'Error';
                     firstOperand = null;
                     operator = null;
@@ -217,6 +219,59 @@
                 return first / second;
             }
             return second; 
+        }
+
+        function handleSquareRoot() {
+            let value = parseFloat(displayValue);
+            if (isNaN(value) || value < 0) {
+                displayValue = 'Error';
+                // Reset calculator state on error
+                firstOperand = null;
+                operator = null;
+                waitingForSecondOperand = false;
+            } else {
+                displayValue = String(Math.sqrt(value));
+            }
+            updateDisplay();
+            // If an operator was just pressed (e.g., "50 +"), waitingForSecondOperand is true.
+            // In this state, applying sqrt should modify firstOperand.
+            if (waitingForSecondOperand && firstOperand !== null) {
+                firstOperand = parseFloat(displayValue); // Update firstOperand with the sqrt result
+            }
+            // If no operator was pending, the displayValue is the first operand implicitly.
+        }
+
+        function handlePercentage() {
+            let currentValue = parseFloat(displayValue);
+
+            if (isNaN(currentValue)) {
+                displayValue = 'Error';
+                firstOperand = null;
+                operator = null;
+                waitingForSecondOperand = false;
+                updateDisplay();
+                return;
+            }
+
+            if (firstOperand !== null && operator !== null) {
+                // If an operation is pending (e.g., 50 + 10%)
+                // Calculate percentage based on the first operand for addition/subtraction
+                // or simply divide by 100 for multiplication/division
+                let percentageValue;
+                if (operator === '+' || operator === '-') {
+                    percentageValue = (firstOperand * currentValue) / 100;
+                } else { // For '*', '/', or other operators
+                    percentageValue = currentValue / 100;
+                }
+                displayValue = String(percentageValue);
+            } else {
+                // No pending operation (e.g., 50%)
+                displayValue = String(currentValue / 100);
+            }
+            updateDisplay();
+            // After applying percentage, the current display value is the (modified) second operand.
+            // Set waitingForSecondOperand to false to indicate that the second operand is "ready".
+            waitingForSecondOperand = false;
         }
 
         function resetCalculator() {
@@ -252,14 +307,25 @@
                 return;
             }
 
+            if (action === 'sqrt') {
+                handleSquareRoot();
+                return;
+            }
+
+            if (action === 'percent') {
+                handlePercentage();
+                return;
+            }
+
             if (action === 'calculate') { // Equals button
-                if (firstOperand === null || operator === null || waitingForSecondOperand) {
-                    return; // No operation to perform or waiting for second operand
+                if (firstOperand === null || operator === null || waitingForSecondOperand || displayValue === 'Error') {
+                    // If no first operand, no operator, waiting for second operand, or display is in an error state, do nothing.
+                    return; 
                 }
                 const inputValue = parseFloat(displayValue);
                 const result = calculate(firstOperand, operator, inputValue);
 
-                if (result === 'Error') { // Handle division by zero
+                if (String(result) === 'Error') { // Handle division by zero or other calculation errors
                     displayValue = 'Error';
                     firstOperand = null;
                     operator = null;
@@ -268,7 +334,7 @@
                     displayValue = String(result);
                     firstOperand = parseFloat(displayValue); // Allow chaining operations with result
                     operator = null; // Clear operator after calculation
-                    waitingForSecondOperand = true; // Next digit starts new number
+                    waitingForSecondOperand = true; // Next digit starts a new number
                 }
                 updateDisplay();
                 return;
